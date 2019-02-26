@@ -1,5 +1,6 @@
 import json
 import pandas as pd
+import numpy as np
 import utils
 
 interface={
@@ -17,11 +18,13 @@ interface={
 
 def __max_drawdownN(N,name):
     def f(raw):
-        df = raw['stock']
+        df = raw['quotes']
         #df[name] = df['low'].rolling_min(-N)
-        df[name] = (df['low'].rolling(N).mean()-df.close)/df.close*100
+        df[name] = (df.close - df['low'].rolling(N).min())/df.close*100
+        df[name] = np.where(df[name]<0,0,df[name])
         #df[name] = (pd.rolling_min(df['low'],N)-df.close)/df.close*100
-        return df
+        raw['quotes'] = df 
+        return raw
     return f
 
 
@@ -39,11 +42,12 @@ def mdw20(raw):
 
 def __profit_maN(N,name):
     def f(raw):
-        df = raw['stock']
+        df = raw['quotes']
         #df[name] = df['low'].rolling_min(-N)
         df[name] = (df['close'].rolling(N).mean()-df.close)/df.close*100
         #df[name] = (pd.rolling_mean(df['close'],N)-df.close)/df.close*100
-        return df
+        raw['quotes'] = df 
+        return raw
     return f
 
 def pma5(raw):
