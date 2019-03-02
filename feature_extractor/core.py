@@ -31,6 +31,8 @@ def load_extractor_config(filename):
                     config[section][label][k]={}
                     mod=importlib.import_module("feature_extractor.features.{}".format(k))
                     config[section][label][k]["lib"]=mod
+                    if hasattr(mod,"init"):
+                        getattr(mod,"init")(mod)
                     config[section][label][k]["interface"]=getattr(mod,"interface")
     return config
             
@@ -43,6 +45,7 @@ def get_extract_cache_path(stock_num,config_file,start_date,end_date):
     return dir_name
 
 def extract_feature(raw,config):
+    #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
     for k in config["stock"]["X"].keys():
         mod=config["stock"]["X"][k]["lib"]
         interface = config["stock"]["X"][k]["interface"]
@@ -61,6 +64,7 @@ def extract_feature(raw,config):
             func = getattr(mod,fc_name)
             raw = func(raw)
     raw['quotes']=raw['quotes'][::-1]
+    #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
     return raw
 
 def flat_feature(raw,config):
@@ -81,6 +85,8 @@ def extract_index_feature(raw,config):
         mod=config["index"]["X"][k]["lib"]
         interface = config["index"]["X"][k]["interface"]
         for fc_name in interface['dataframe']:
+            if fc_name in ['market']: #not for index
+                continue
             func = getattr(mod,fc_name)
             #print(func)
             raw = func(raw)
