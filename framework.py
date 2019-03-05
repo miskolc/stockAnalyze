@@ -27,14 +27,18 @@ def do_extract_feature(queue,config_file,cache_dir,index,start,end):
         print('process {} process stock {} total:{}'.format(index,code,count))
         #try:
         stock_df=engine.get_k_data(code,start=start,end=end)
+        if stock_df is None or stock_df.shape[0]==0:
+            print('stock {} no data between {} and {}'.format(code,start,end))
+            continue
         feature=extract_feature({'quotes':stock_df,'code':code},config)
         #except:
         #    continue
         flated = flat_feature(feature,config)
         dfs.append(flated)
         count = count + 1
-    df = pd.concat(dfs,axis=0)
-    df.to_pickle(os.path.join(cache_dir,'cache{}.pkl'.format(index)))
+    if len(dfs)>0:
+        df = pd.concat(dfs,axis=0)
+        df.to_pickle(os.path.join(cache_dir,'cache{}.pkl'.format(index)))
     print('end process {}... process stock:{}'.format(index,count))
 
 def extract_stock_feature(data_config_file,feature_config_file,np=None,force=False):
@@ -51,8 +55,8 @@ def extract_stock_feature(data_config_file,feature_config_file,np=None,force=Fal
             print('extract file path:{} is not empty, wait 3s to check if the data is ok. You can remove the files in the directory,or pass argument force=True'.format(dir_name))
             time.sleep(3)
             return
-    stocks = ts.get_stock_basics() 
-    stock_pool = list(stocks.index)
+    engine = DataEngine()
+    stock_pool = engine.get_all_stocks() 
     if stock_num is not None:
         stock_pool = stock_pool[:stock_num]
     for code in stock_pool:
@@ -101,11 +105,18 @@ def load_extracted_feature(data_config_file,feature_config_file):
         return pd.concat([dfx,dfy],axis=0)
        
     df = reduce(merge_cached,cached_features) 
+   
+    print('df cached') 
+    print(df.info(memory_usage='deep'))
+
 
     print('create index feature')
     index_pool_features = index_pool_extract_feature(data_config_file,feature_config_file) 
     for raw in index_pool_features:
         df = df.merge(raw['quotes'],on=['date'],how='inner')
+
+    print('df merge index') 
+    print(df.info(memory_usage='deep'))
     return df
         
 
@@ -168,15 +179,34 @@ def create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mo
     df = load_extracted_feature(data_config_file,feature_config_file)
     
     df = target_func(df,analyzer_config.get('Y').get('args'))
-    print(df.describe())
-    print(df.columns)
+    #print(df.describe())
+    #print(df.columns)
+    print('df after count target') 
+    print(df.info(memory_usage='deep'))
     df = prepare_data(df,analyzer_config)
-    train_df,test_df = split_cv(df,analyzer_config)
-    print('train:{},test:{}'.format(train_df.shape,test_df.shape))
+    print('df after prepare data') 
+    print(df.info(memory_usage='deep'))
+    _train_df,_test_df = split_cv(df,analyzer_config)
+    print('train:{},test:{}'.format(_train_df.shape,_test_df.shape))
+    del df
+    train_df = _train_df.head(int(_train_df.shape[0]*0.4))
+    #train_df = _train_df
+    test_df = _test_df
+    print('train df') 
+    print(train_df.info(memory_usage='deep'))
+    print('test df') 
+    print(test_df.info(memory_usage='deep'))
+    del _train_df
     train_X = get_X(train_df,analyzer_config)
     train_Y = get_Y(train_df,analyzer_config)
     test_X = get_X(test_df,analyzer_config)
     test_Y = get_Y(test_df,analyzer_config)
+    del train_df
+    del test_df 
+    print('train X') 
+    print(train_X.info(memory_usage='deep'))
+    print('test X') 
+    print(test_X.info(memory_usage='deep'))
     model = XModel(mod_path)
     model.train(mod_config,train_X,train_Y,test_X,test_Y)
 

@@ -20,6 +20,14 @@ def __max_drawdownN(N,name):
     def f(raw):
         df = raw['quotes']
         #df[name] = df['low'].rolling_min(-N)
+        df.loc[:,name] = (df.close - df['low'].rolling(N).min())/df.close*100
+        df.loc[:,name] = np.where(df[name]<0,0,df[name])
+        #df[name] = (pd.rolling_min(df['low'],N)-df.close)/df.close*100
+        #raw['quotes'] = df 
+        return raw
+    def __f(raw):
+        df = raw['quotes']
+        #df[name] = df['low'].rolling_min(-N)
         df[name] = (df.close - df['low'].rolling(N).min())/df.close*100
         df[name] = np.where(df[name]<0,0,df[name])
         #df[name] = (pd.rolling_min(df['low'],N)-df.close)/df.close*100
@@ -42,6 +50,13 @@ def mdw20(raw):
 
 def __profit_maN(N,name):
     def f(raw):
+        df = raw['quotes']
+        #df[name] = df['low'].rolling_min(-N)
+        df.loc[:,name] = (df['close'].rolling(N).mean()-df.close)/df.close*100
+        #df[name] = (pd.rolling_mean(df['close'],N)-df.close)/df.close*100
+        #raw['quotes'] = df 
+        return raw
+    def __f(raw):
         df = raw['quotes']
         #df[name] = df['low'].rolling_min(-N)
         df[name] = (df['close'].rolling(N).mean()-df.close)/df.close*100

@@ -73,7 +73,7 @@ def flat_feature(raw,config):
 
 def rename_columns(df,suffix):
     def __add_suffixes(x):
-        if x in ['date','code']:
+        if x in ['date','code','ts_code','trade_date']:
             return x
         else:
             return '_'.join([x,suffix])
@@ -102,5 +102,8 @@ def extract_index_feature(raw,config):
             raw = func(raw)
     raw['quotes']=raw['quotes'][::-1]
     rename_columns(raw['quotes'],raw['code'])
-    raw['quotes'].drop(['code'],axis=1,inplace=True)
+    if 'code' in raw['quotes'].columns:
+        raw['quotes'].drop(['code'],axis=1,inplace=True)
+    if 'ts_code' in raw['quotes'].columns:
+        raw['quotes'].drop(['ts_code'],axis=1,inplace=True)
     return raw

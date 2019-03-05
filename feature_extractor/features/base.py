@@ -44,6 +44,9 @@ def market(raw):
 def __PDeltaN(raw,N,name):
     def f(raw):
         df = raw['quotes']
+        if df is None:
+            print(raw)
+        assert df is not None
         df[name] = (df.close/df.close.shift(N) - 1)[N:]*100
         raw['quotes'] = df
         return raw
@@ -97,7 +100,10 @@ def MA20(raw):
 def __VMAN(raw,N,name):
     def f(raw):
         df = raw['quotes']
-        df[name] = df['volume'].rolling(N).mean()
+        if 'volume' in df.columns:
+            df[name] = df['volume'].rolling(N).mean()
+        if 'vol' in df.columns:
+            df[name] = df['vol'].rolling(N).mean()
         raw['quotes'] = df
         return raw
     return f
@@ -122,7 +128,10 @@ def VMA20(raw):
 def __VRIN(raw,N,name):
     def f(raw):
         df = raw['quotes']
-        df[name] = df['volume']/df['VMA{}'.format(N)]
+        if 'volume' in df.columns:
+            df[name] = df['volume']/df['VMA{}'.format(N)]
+        if 'vol' in df.columns:
+            df[name] = df['vol']/df['VMA{}'.format(N)]
         raw['quotes'] = df
         return raw
     return f
