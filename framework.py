@@ -14,6 +14,7 @@ from analyzer.core import load_analyzer_config,prepare_data,split_cv,get_X,get_Y
 
 import data_engine
 import json
+import utils
 
 
 def do_extract_feature(queue,config_file,cache_dir,index,start,end):
@@ -30,6 +31,9 @@ def do_extract_feature(queue,config_file,cache_dir,index,start,end):
         if stock_df is None or stock_df.shape[0]==0:
             print('stock {} no data between {} and {}'.format(code,start,end))
             continue
+        stock_info = engine.get_stock_basics(code,start=start,end=end)
+        if stock_info is not None:
+            stock_df = stock_df.merge(stock_info,on=['date'],how='left')
         feature=extract_feature({'quotes':stock_df,'code':code},config)
         #except:
         #    continue
@@ -115,6 +119,11 @@ def load_extracted_feature(data_config_file,feature_config_file):
     for raw in index_pool_features:
         df = df.merge(raw['quotes'],on=['date'],how='inner')
 
+    print('drop na')
+    MA_20 = list(filter(lambda x:x.find('MA_20'),df.columns))
+    
+    df.dropna(subset=[MA_20[0]],inplace=True)
+
     print('df merge index') 
     print(df.info(memory_usage='deep'))
     return df
@@ -127,6 +136,9 @@ def prepare_stock_data(code,data_config_file,feature_config_file,start,end):
     stock_df=engine.get_k_data(code,start=start,end=end)
     print(stock_df.date.min())
     print(stock_df.date.max())
+    stock_info = engine.get_stock_basics(code,start=start,end=end)
+    if stock_info is not None:
+        stock_df = stock_df.merge(stock_info,on=['date'],how='left')
     feature=extract_feature({'quotes':stock_df,'code':code},feature_config)
     df = flat_feature(feature,feature_config)
     print(df.date.min())
@@ -179,6 +191,15 @@ def create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mo
     df = load_extracted_feature(data_config_file,feature_config_file)
     
     df = target_func(df,analyzer_config.get('Y').get('args'))
+
+    k = int(df.shape[0]/3)
+
+    def sampling_k_elements(group):
+        if len(group) < k:
+            return group
+        return group.sample(k,replace=True)
+
+    df = df.groupby('Y_'+analyzer_config.get('Y').get('target')).apply(sampling_k_elements).reset_index(drop=True)
     #print(df.describe())
     #print(df.columns)
     print('df after count target') 
@@ -189,7 +210,7 @@ def create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mo
     _train_df,_test_df = split_cv(df,analyzer_config)
     print('train:{},test:{}'.format(_train_df.shape,_test_df.shape))
     del df
-    train_df = _train_df.head(int(_train_df.shape[0]*0.4))
+    train_df = _train_df.head(int(_train_df.shape[0]))
     #train_df = _train_df
     test_df = _test_df
     print('train df') 
@@ -241,6 +262,22 @@ def load_analyzer_record(path):
         "model":model
     }
 
+def use_analyzer_on_stock_of_the_date(code,analyzer,date):
+    print(date)
+    start = utils.date_delta(date,-200)
+    df = prepare_stock_data(code,analyzer.get('data_config_file'),analyzer.get('feature_config_file'),start,date)
+    print(df)
+    df = df[(df.date==date)|(df.date==utils.format_date_ts_pro(date))]
+    print(len(list(df.columns)))
+    
+    analyzer_config = load_analyzer_config(analyzer.get('analyzer_config_file'))
+    X = get_X(df,analyzer_config)
+    mod_features = analyzer.get('model').feature_names
+    print('parse columns:{},model columns:{}'.format(len(list(X.columns)),len(mod_features)))
+    print(X.shape)
+    y = analyzer.get('model').predict(X)
+    return (df,y)
+
 def use_analyzer_on_stock(code,analyzer,start,end):
     print(start)
     print(end)
@@ -274,3 +311,22 @@ def use_analyzer_on_the_date(analyzer,date):
     for k in nclass:
         summary[str(int(k))] = list(df[y==k]['code'])
     return (summary,df,y)
+
+if __name__=="__main__":
+    pd.set_option('display.max_columns', None)
+    data_config_file =  "configs/data_config/300.json"
+    feature_config_file = "configs/feature_config/test_config.json"
+    analyzer_config_file = "configs/analyzer_config/simple.json"
+    start='2016-01-01'
+    end='2018-01-01'
+    code='000651.SZ'
+    engine = DataEngine()
+    stock_df=engine.get_k_data(code,start=start,end=end)
+    feature_config = load_extractor_config(feature_config_file)
+    stock_info = engine.get_stock_basics(code,start=start,end=end)
+    if stock_info is not None:
+        stock_df = stock_df.merge(stock_info,on=['date'],how='left')
+    feature=extract_feature({'quotes':stock_df,'code':code},feature_config)
+    print(list(feature['quotes'].columns))
+    print(feature['quotes'])
+

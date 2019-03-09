@@ -3,7 +3,7 @@ import numpy  as np
 import pandas as pd
 import argparse
 from feature_extractor.core import load_extractor_config,extract_feature 
-from framework import load_analyzer_record,use_analyzer_on_the_date,extract_stock_feature,load_extracted_feature,prepare_stock_data,create_analyzer
+from framework import use_analyzer_on_stock_of_the_date,load_analyzer_record,use_analyzer_on_the_date,extract_stock_feature,load_extracted_feature,prepare_stock_data,create_analyzer
 from analyzer.core import load_analyzer_config,prepare_data,split_cv,get_X,get_Y
 import xgboost as xgb
 import datetime
@@ -30,9 +30,20 @@ if __name__=='__main__':
 
 
     #model = create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mod_name=mod_name,base_path=base_path)
-    record_path = "records/talib"
+    record_path = "records/small"
     analyzer = load_analyzer_record(record_path)
     result = {}
+    print(analyzer)
+    #df,y =use_analyzer_on_stock_of_the_date('000651.SZ',analyzer,'2019-03-07')
+    #print(df)
+    #print(y)
+    #df,y =use_analyzer_on_stock_of_the_date('000333.SZ',analyzer,'2019-03-06')
+    #print(df)
+    #print(y)
+    df,y =use_analyzer_on_stock_of_the_date('603019.SH',analyzer,'2019-03-07')
+    print(df)
+    print(y)
+    exit(0)
     days = ['2019-02-28','2019-03-01','2019-02-27']
     #days = ['2019-02-26','2019-02-27','2019-02-28']
     sell = set()

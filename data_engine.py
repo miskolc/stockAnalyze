@@ -84,7 +84,8 @@ def pro_opt_stock_k(df):
             'amount': np.float32
         },copy=False)
     df.rename(columns={'trade_date':'date'},inplace=True)
-    return df.sort_values(by=["date"])
+    df.sort_values(by=["date"],inplace=True)
+    return df
 
 def pro_opt_stock_basic(df):
     df = df.astype({
@@ -154,6 +155,35 @@ class DataEngine():
         if self.api=='tushare':
             self.stock_info = ts.get_stock_basics()
             return list(self.stock_info.code)
+
+    def get_stock_basics(self,code,start=None,end=None):
+        if self.api=='tushare_pro':
+            return self.pro_get_stock_basic(code,start,end)
+        return None
+
+    def pro_get_stock_basic(self,code,start=None,end=None):
+        table = self.tables['stock_basic_daily']
+        query_stock = "select * from {} where ts_code='{}';".format(table,code)
+        df = pd.read_sql_query(query_stock,self.conn)
+        df = df.astype({
+            'close': np.float16,
+            'turnover_rate':np.float16,
+            'turnover_rate_f':np.float16,
+            'volume_ratio':np.float16,
+            'pe':np.float16,
+            'pe_ttm':np.float16,
+            'pb':np.float16,
+            'ps':np.float16,
+            'ps_ttm':np.float16,
+            'total_share':np.float32,
+            'float_share':np.float32,
+            'free_share':np.float32,
+            'total_mv':np.float32,
+            'circ_mv':np.float32,
+            },copy=False)
+        df.rename(columns={'close':'close_bfq','trade_date':'date'},inplace=True)
+        df.drop(['ts_code'],axis=1,inplace=True)
+        return df 
 
         
     def get_k_data(self,code,index=False,ktype='D',start=None,end=None):
@@ -308,8 +338,18 @@ class DataEngine():
             return self.pro_stock_basic_on_the_date(date)
 
     def update_cache_stock_basic(self):
+        table = self.tables['stock_basic_daily']
         dates = list(self.pro.index_daily(ts_code='000001.SH', start_date=format_date_ts_pro(START_DATE)).trade_date)
-        for date in dates:
+        query_dates = 'SELECT trade_date FROM {} group by trade_date'.format(table);
+        DBSession = sessionmaker(self.conn)
+        session = DBSession()
+        cached_dates = list(map(lambda x:x[0],session.execute(query_dates)))
+        #print(res)
+        session.close()
+        uncached = list(set(dates).difference(set(cached_dates)))
+        print('stock of the dates need to be cached {}'.format(uncached))
+        for date in uncached:
+            print(date)
             self.get_basic_on_the_date(date)
         
     def update_cache_stock_k(self):
@@ -328,7 +368,7 @@ def update_cache_stock_k():
     engine.update_cache_stock_k()
 
 if __name__=="__main__":
-    update_cache_stock_k()
+    #update_cache_stock_k()
     #print(format_date_ts_pro('2010-07-01'))
     #exit(0)
     #engine = DataEngine()
@@ -338,7 +378,7 @@ if __name__=="__main__":
     #df = engine.get_basic_on_the_date('2010-06-01')
     #print(df)
     #print(df.info(memory_usage='deep'))
-    #engine.update_cache_stock_basic()
+    update_cache_stock_basic()
 
 
     

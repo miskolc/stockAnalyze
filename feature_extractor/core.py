@@ -54,7 +54,8 @@ def extract_feature(raw,config):
             #print(func)
             raw = func(raw)
     #print(raw['stock'])
-    raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes']=raw['quotes'][::-1]
+    raw['quotes'].sort_values(by=['date'],ascending=False,inplace=True)
     #print('after reverse')
     #print(raw['stock'])
     for k in config["stock"]["Y"].keys():
@@ -63,7 +64,8 @@ def extract_feature(raw,config):
         for fc_name in interface['dataframe']:
             func = getattr(mod,fc_name)
             raw = func(raw)
-    raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes']=raw['quotes'][::-1]
+    raw['quotes'].sort_values(by=['date'],inplace=True)
     #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
     return raw
 
@@ -91,7 +93,8 @@ def extract_index_feature(raw,config):
             #print(func)
             raw = func(raw)
     #print(raw['stock'])
-    raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes']=raw['quotes'][::-1]
+    raw['quotes'].sort_values(by=['date'],ascending=False,inplace=True)
     #print('after reverse')
     #print(raw['stock'])
     for k in config["index"]["Y"].keys():
@@ -100,7 +103,8 @@ def extract_index_feature(raw,config):
         for fc_name in interface['dataframe']:
             func = getattr(mod,fc_name)
             raw = func(raw)
-    raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes']=raw['quotes'][::-1]
+    raw['quotes'].sort_values(by=['date'],inplace=True)
     rename_columns(raw['quotes'],raw['code'])
     if 'code' in raw['quotes'].columns:
         raw['quotes'].drop(['code'],axis=1,inplace=True)
