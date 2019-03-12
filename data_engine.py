@@ -32,6 +32,8 @@ def load_data_config(config_file):
         config_json = json.load(open(config_file))
     else:
         config_json = config_file
+    print('config file')
+    print(config_file)
     assert config_json.get("start") is not None
     assert config_json.get("end") is not None
     #stocks = ts.get_stock_basics()
@@ -43,33 +45,6 @@ def load_data_config(config_file):
 
     index_pool=["000001.SH","399001.SZ","399005.SZ","399006.SZ"]
     return (num,index_pool,config_json.get("start"),config_json.get("end"))
-
-
-def get_k_data(code,index=False,ktype='D',start='2010-06-01',end='2018-09-28'):
-    #pro = ts.pro_api()
-    file_name = os.path.join(stock_path,'k',str(code)+'-'+start+'-'+end+'.bin')
-    #file_name = os.path.join(stock_path,'k',str(code)+'-'+min(start,'2004-01-01')+'-'+end+'.bin')
-    print(file_name)
-    try:
-        df = pd.read_pickle(file_name)
-    except:
-        df = ts.get_k_data(code,index=index,ktype=ktype,start=start,end=end)
-        df.to_pickle(file_name)
-    #return df.drop(['code'],axis=1)
-    return df
-
-def __get_k_data(code,index=False,ktype='D',start='2010-06-01',end='2018-09-28'):
-    #pro = ts.pro_api()
-    file_name = os.path.join(stock_path,'k',str(code)+'-'+start+'-'+end+'.bin')
-    #file_name = os.path.join(stock_path,'k',str(code)+'-'+min(start,'2004-01-01')+'-'+end+'.bin')
-    print(file_name)
-    try:
-        df = pd.read_pickle(file_name)
-    except:
-        df = ts.get_k_data(code,index=index,ktype=ktype,start=start,end=end)
-        df.to_pickle(file_name)
-    #return df.drop(['code'],axis=1)
-    return df
 
 def pro_opt_stock_k(df):
     df = df.astype({
@@ -192,6 +167,19 @@ class DataEngine():
                 return self.get_k_data_daily(code,index,start,end)
             if self.api=='tushare_pro':
                 return self.pro_get_k_data_daily(code,index,start,end)
+
+    def get_market_data(self,date):
+        df = self.get_market_data_cached(date)
+        if df is None or df.shape[0]==0:
+            df = self.pro.daily(trade_date=format_date_ts_pro(date))
+        return df
+
+    def get_market_data_cached(self,date):
+        table = self.tables['stock_trade_daily']
+        date = format_date_ts_pro(date)
+        query= "select * from {} where trade_date='{}'".format(table,date)
+        return pd.read_sql_query(query,self.conn)
+        
 
     def pro_get_k_data_daily(self,code,index,start,end):
         df,cached_start,cached_end = self.get_k_data_daily_cached(code,index,start,end)
@@ -337,6 +325,10 @@ class DataEngine():
         if self.api=='tushare_pro':
             return self.pro_stock_basic_on_the_date(date)
 
+    def get_trade_dates(self,start,end):
+        dates = list(self.pro.index_daily(ts_code='000001.SH', start_date=format_date_ts_pro(start),end_date=format_date_ts_pro(end)).trade_date)
+        return dates
+
     def update_cache_stock_basic(self):
         table = self.tables['stock_basic_daily']
         dates = list(self.pro.index_daily(ts_code='000001.SH', start_date=format_date_ts_pro(START_DATE)).trade_date)
@@ -371,14 +363,16 @@ if __name__=="__main__":
     #update_cache_stock_k()
     #print(format_date_ts_pro('2010-07-01'))
     #exit(0)
-    #engine = DataEngine()
+    engine = DataEngine()
+    df = engine.get_market_data('2017-07-03')
+    print(df)
     #df = engine.get_k_data('000319.SZ',start='2010-07-01',end='2017-07-01')
     #df = engine.get_k_data('000333.SZ',start='2010-07-01',end='2017-07-01')
     #df = engine.get_k_data('000651.SZ',start='2010-07-01',end='2017-07-01')
     #df = engine.get_basic_on_the_date('2010-06-01')
     #print(df)
     #print(df.info(memory_usage='deep'))
-    update_cache_stock_basic()
+    #update_cache_stock_basic()
 
 
     

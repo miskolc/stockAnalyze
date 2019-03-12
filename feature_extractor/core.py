@@ -21,9 +21,12 @@ def load_extractor_config(filename):
         },
         "index":{
             "X":{},"Y":{}
+        },
+        "market":{
+            "X":{},"Y":{}
         }
     }
-    for section in ['stock','index']:
+    for section in ['stock','index','market']:
         for label in ['X','Y']:
             for k in config_json[section][label].keys():
                 option = config_json[section][label][k]
@@ -37,11 +40,11 @@ def load_extractor_config(filename):
     return config
             
 
-def get_extract_cache_path(stock_num,config_file,start_date,end_date):
+def get_extract_cache_path(prefix,stock_num,config_file,start_date,end_date):
     stock_num = '*' if stock_num is None else stock_num 
     _,config_file_name = os.path.split(config_file) 
     config_name,_ = os.path.splitext(config_file_name) 
-    dir_name = os.path.join( cache_path,'pool{}_{}_{}-{}'.format(stock_num,config_name,start_date,end_date))
+    dir_name = os.path.join( cache_path,'{}_pool{}_{}_{}-{}'.format(prefix,stock_num,config_name,start_date,end_date))
     return dir_name
 
 def extract_feature(raw,config):
@@ -66,6 +69,31 @@ def extract_feature(raw,config):
             raw = func(raw)
     #raw['quotes']=raw['quotes'][::-1]
     raw['quotes'].sort_values(by=['date'],inplace=True)
+    #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
+    return raw
+
+def extract_market_feature(raw,config):
+    #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
+    for k in config["market"]["X"].keys():
+        mod=config["market"]["X"][k]["lib"]
+        interface = config["market"]["X"][k]["interface"]
+        for fc_name in interface['dataframe']:
+            func = getattr(mod,fc_name)
+            #print(func)
+            raw = func(raw)
+    #print(raw['stock'])
+    #raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes'].sort_values(by=['date'],ascending=False,inplace=True)
+    #print('after reverse')
+    #print(raw['stock'])
+    for k in config["market"]["Y"].keys():
+        mod=config["market"]["Y"][k]["lib"]
+        interface = config["market"]["Y"][k]["interface"]
+        for fc_name in interface['dataframe']:
+            func = getattr(mod,fc_name)
+            raw = func(raw)
+    #raw['quotes']=raw['quotes'][::-1]
+    #raw['quotes'].sort_values(by=['date'],inplace=True)
     #print('{}-{}'.format(raw['quotes'].date.min(),raw['quotes'].date.max()))
     return raw
 
@@ -105,7 +133,7 @@ def extract_index_feature(raw,config):
             raw = func(raw)
     #raw['quotes']=raw['quotes'][::-1]
     raw['quotes'].sort_values(by=['date'],inplace=True)
-    rename_columns(raw['quotes'],raw['code'])
+    rename_columns(raw['quotes'],raw['code']+'_Index')
     if 'code' in raw['quotes'].columns:
         raw['quotes'].drop(['code'],axis=1,inplace=True)
     if 'ts_code' in raw['quotes'].columns:

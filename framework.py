@@ -5,7 +5,7 @@ import datetime
 import pandas as pd
 from multiprocessing import Process,Queue,cpu_count 
 from data_engine import DataEngine,load_data_config
-from feature_extractor.core import get_extract_cache_path,load_extractor_config,extract_feature,flat_feature,extract_index_feature
+from feature_extractor.core import get_extract_cache_path,load_extractor_config,extract_feature,flat_feature,extract_index_feature,extract_market_feature
 import datetime
 from functools import reduce
 import tushare as ts 
@@ -16,8 +16,9 @@ import data_engine
 import json
 import utils
 
+import gc
 
-def do_extract_feature(queue,config_file,cache_dir,index,start,end):
+def do_extract_stock_feature(queue,config_file,cache_dir,index,start,end):
     config = load_extractor_config(config_file)
     print('start process {}...'.format(index))
     count = 0
@@ -49,7 +50,7 @@ def extract_stock_feature(data_config_file,feature_config_file,np=None,force=Fal
     print('mp_extract_stock_feature start-{}'.format(datetime.datetime.now()))
     stock_num,index_pool,start_date,end_date = load_data_config(data_config_file)
     queue = Queue()
-    dir_name = get_extract_cache_path(stock_num,feature_config_file,start_date,end_date)
+    dir_name = get_extract_cache_path('stock',stock_num,feature_config_file,start_date,end_date)
     if not os.path.isdir(dir_name):
         os.mkdir(dir_name)
     print(os.listdir(dir_name))
@@ -69,7 +70,7 @@ def extract_stock_feature(data_config_file,feature_config_file,np=None,force=Fal
     tasks = []
     n = np if np is not None else cpu_count()
     for i in range(n):
-        pro = Process(target=do_extract_feature, args=(queue,feature_config_file,dir_name,i,start_date,end_date))
+        pro = Process(target=do_extract_stock_feature, args=(queue,feature_config_file,dir_name,i,start_date,end_date))
         pro.start()
         tasks.append(pro)
 
@@ -78,6 +79,64 @@ def extract_stock_feature(data_config_file,feature_config_file,np=None,force=Fal
         task.join()
     print('tasks end')
     print('mp_extract_stock_feature end-{}'.format(datetime.datetime.now()))
+
+def do_extract_market_feature(queue,config_file,cache_dir,index):
+    config = load_extractor_config(config_file)
+    print('start process {}...'.format(index))
+    count = 0
+    dfs = []
+    engine = DataEngine()
+    while not queue.empty():
+        date = queue.get()
+        print('process {} process stock {} total:{}'.format(index,date,count))
+        #try:
+        market_df=engine.get_market_data(date)
+        if market_df is None or market_df.shape[0]==0:
+            print('No market data at {}'.format(date))
+            continue
+        feature=extract_market_feature({'quotes':market_df,'date':date,'market':pd.DataFrame({'date':[date]})},config)
+        #except:
+        #    continue
+        flated = feature['market']
+        dfs.append(flated)
+        count = count + 1
+    if len(dfs)>0:
+        df = pd.concat(dfs,axis=0)
+        df.to_pickle(os.path.join(cache_dir,'cache{}.pkl'.format(index)))
+    print('end process {}... process stock:{}'.format(index,count))
+
+def market_extract_feature(data_config_file,feature_config_file,np=None,force=False):
+    print('mp_extract_market_feature start-{}'.format(datetime.datetime.now()))
+    print(data_config_file)
+    stock_num,index_pool,start_date,end_date = load_data_config(data_config_file)
+    dir_name = get_extract_cache_path('market',stock_num,feature_config_file,start_date,end_date)
+    if not os.path.isdir(dir_name):
+        os.mkdir(dir_name)
+    print(os.listdir(dir_name))
+    if os.listdir(dir_name):
+        print('dir is not empty')
+        if not force:
+            print('extract file path:{} is not empty, wait 3s to check if the data is ok. You can remove the files in the directory,or pass argument force=True'.format(dir_name))
+            time.sleep(3)
+            return
+    queue = Queue()
+    engine = DataEngine()
+    dates = engine.get_trade_dates(utils.date_delta(start_date,1),end_date)
+    for date in dates:
+        queue.put(date)
+
+    tasks = []
+    n = np if np is not None else cpu_count()
+    for i in range(n):
+        pro = Process(target=do_extract_market_feature, args=(queue,feature_config_file,dir_name,i))
+        pro.start()
+        tasks.append(pro)
+
+    print('waiting for task complete')
+    for task in tasks:
+        task.join()
+    print('tasks end')
+    print('mp_extract_market_feature end-{}'.format(datetime.datetime.now()))
 
 
 def index_pool_extract_feature(data_config_file,feature_config_file):
@@ -95,7 +154,7 @@ def index_pool_extract_feature(data_config_file,feature_config_file):
 
 def load_extracted_feature(data_config_file,feature_config_file):
     stock_num,index_pool,start_date,end_date = load_data_config(data_config_file)
-    dir_name = get_extract_cache_path(stock_num,feature_config_file,start_date,end_date)
+    dir_name = get_extract_cache_path('stock',stock_num,feature_config_file,start_date,end_date)
     if not os.path.isdir(dir_name):
         print('extracted feature not exist')
         return None
@@ -109,6 +168,9 @@ def load_extracted_feature(data_config_file,feature_config_file):
         return pd.concat([dfx,dfy],axis=0)
        
     df = reduce(merge_cached,cached_features) 
+
+
+    utils.show_sys_mem('MERGE CACHED')
    
     print('df cached') 
     print(df.info(memory_usage='deep'))
@@ -118,6 +180,7 @@ def load_extracted_feature(data_config_file,feature_config_file):
     index_pool_features = index_pool_extract_feature(data_config_file,feature_config_file) 
     for raw in index_pool_features:
         df = df.merge(raw['quotes'],on=['date'],how='inner')
+    utils.show_sys_mem('MERGE INDEX')
 
     print('drop na')
     MA_20 = list(filter(lambda x:x.find('MA_20'),df.columns))
@@ -186,20 +249,28 @@ def create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mo
     XModel = getattr(analyzer_lib,analyzer_config.get('Analyzer').get('name'))
     mod_config = analyzer_config.get('Analyzer').get('args')
     
-    #load data to train
+    #load data to traino
+    utils.show_sys_mem('BEGIN')
     extract_stock_feature(data_config_file,feature_config_file,force=False)
+    utils.show_sys_mem('EXTRACT FEATURE')
+    
     df = load_extracted_feature(data_config_file,feature_config_file)
+    utils.show_sys_mem('LOAD FEATURE')
     
     df = target_func(df,analyzer_config.get('Y').get('args'))
+    utils.show_sys_mem('SET ANALYZER TARGET')
 
-    k = int(df.shape[0]/3)
+    #k = int(df.shape[0]/3)
 
-    def sampling_k_elements(group):
-        if len(group) < k:
-            return group
-        return group.sample(k,replace=True)
+    #k=int(k/2)
 
-    df = df.groupby('Y_'+analyzer_config.get('Y').get('target')).apply(sampling_k_elements).reset_index(drop=True)
+    #def sampling_k_elements(group):
+        #if len(group) < k:
+        #    return group
+     #   return group.sample(k,replace=True)
+
+    #df = df.groupby('Y_'+analyzer_config.get('Y').get('target')).apply(sampling_k_elements).reset_index(drop=True)
+    #utils.show_sys_mem('BALLANCE DATA')
     #print(df.describe())
     #print(df.columns)
     print('df after count target') 
@@ -207,29 +278,45 @@ def create_analyzer(data_config_file,feature_config_file,analyzer_config_file,mo
     df = prepare_data(df,analyzer_config)
     print('df after prepare data') 
     print(df.info(memory_usage='deep'))
+    utils.show_sys_mem('PREPARE DATA')
     _train_df,_test_df = split_cv(df,analyzer_config)
     print('train:{},test:{}'.format(_train_df.shape,_test_df.shape))
     del df
-    train_df = _train_df.head(int(_train_df.shape[0]))
+    utils.show_sys_mem('SPLIT CV')
+    k = int(_train_df.shape[0]/3)
+
+    k=int(k/2)
+
+    def sampling_k_elements(group):
+        #if len(group) < k:
+        #    return group
+        return group.sample(k,replace=True)
+
+    _train_df = _train_df.groupby('Y_'+analyzer_config.get('Y').get('target')).apply(sampling_k_elements).reset_index(drop=True)
+    utils.show_sys_mem('BALLANCE DATA')
+    train_df = _train_df
+    #train_df = _train_df.head(int(_train_df.shape[0]))
     #train_df = _train_df
     test_df = _test_df
     print('train df') 
     print(train_df.info(memory_usage='deep'))
     print('test df') 
     print(test_df.info(memory_usage='deep'))
-    del _train_df
+    #del _train_df
     train_X = get_X(train_df,analyzer_config)
     train_Y = get_Y(train_df,analyzer_config)
     test_X = get_X(test_df,analyzer_config)
     test_Y = get_Y(test_df,analyzer_config)
     del train_df
     del test_df 
+    utils.show_sys_mem('GET XY')
     print('train X') 
     print(train_X.info(memory_usage='deep'))
     print('test X') 
     print(test_X.info(memory_usage='deep'))
     model = XModel(mod_path)
     model.train(mod_config,train_X,train_Y,test_X,test_Y)
+    utils.show_sys_mem('AFTER TRAIN')
 
     shutil.copyfile(data_config_file,os.path.join(mod_path,'data.json'))
     shutil.copyfile(feature_config_file,os.path.join(mod_path,'feature.json'))
@@ -320,6 +407,8 @@ if __name__=="__main__":
     start='2016-01-01'
     end='2018-01-01'
     code='000651.SZ'
+    market_extract_feature(data_config_file,feature_config_file)
+    exit(0)
     engine = DataEngine()
     stock_df=engine.get_k_data(code,start=start,end=end)
     feature_config = load_extractor_config(feature_config_file)
