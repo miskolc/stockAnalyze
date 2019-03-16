@@ -150,6 +150,22 @@ def index_pool_extract_feature(data_config_file,feature_config_file):
         feature=extract_index_feature({'quotes':index_df,'code':code},feature_config)
         feature_dfs.append(feature)
     return feature_dfs
+
+def load_market_feature(data_config_file,feature_config_file):
+    stock_num,index_pool,start_date,end_date = load_data_config(data_config_file)
+    dir_name = get_extract_cache_path('market',stock_num,feature_config_file,start_date,end_date)
+    if not os.path.isdir(dir_name):
+        print('extracted market feature not exist')
+        return None
+    cached_features = list(map(lambda x:os.path.join(dir_name,x),os.listdir(dir_name)))   
+    feature_config = load_extractor_config(feature_config_file)
+    def merge_cached(x,y):
+        dfx = x if not isinstance(x,str) else pd.read_pickle(x) 
+        dfy = y if not isinstance(y,str) else pd.read_pickle(y) 
+        return pd.concat([dfx,dfy],axis=0)
+       
+    df = reduce(merge_cached,cached_features) 
+    return df
         
 
 def load_extracted_feature(data_config_file,feature_config_file):
@@ -182,10 +198,18 @@ def load_extracted_feature(data_config_file,feature_config_file):
         df = df.merge(raw['quotes'],on=['date'],how='inner')
     utils.show_sys_mem('MERGE INDEX')
 
+    print('create market feature')
+    market_extract_feature(data_config_file,feature_config_file)
+    market_df = load_market_feature(data_config_file,feature_config_file)    
+    df = df.merge(market_df,on=['date'],how='inner')
+    del market_df
+    utils.show_sys_mem('MERGE MARKET')
+
     print('drop na')
     MA_20 = list(filter(lambda x:x.find('MA_20'),df.columns))
     
     df.dropna(subset=[MA_20[0]],inplace=True)
+
 
     print('df merge index') 
     print(df.info(memory_usage='deep'))
@@ -408,6 +432,8 @@ if __name__=="__main__":
     end='2018-01-01'
     code='000651.SZ'
     market_extract_feature(data_config_file,feature_config_file)
+    df = load_market_feature(data_config_file,feature_config_file)
+    print(df)
     exit(0)
     engine = DataEngine()
     stock_df=engine.get_k_data(code,start=start,end=end)

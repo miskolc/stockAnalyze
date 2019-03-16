@@ -178,7 +178,11 @@ class DataEngine():
         table = self.tables['stock_trade_daily']
         date = format_date_ts_pro(date)
         query= "select * from {} where trade_date='{}'".format(table,date)
-        return pd.read_sql_query(query,self.conn)
+        k_df = pd.read_sql_query(query,self.conn)
+        table = self.tables['stock_basic_daily']
+        query_basic = "select * from {} where trade_date='{}';".format(table,date)
+        basic_df = pd.read_sql_query(query_basic,self.conn)
+        return k_df.merge(basic_df,on=['ts_code'],how='inner')
         
 
     def pro_get_k_data_daily(self,code,index,start,end):
